@@ -15,7 +15,6 @@ opinion-portfolio-tracker/
 │   │   └── App.jsx
 │   ├── package.json
 │   └── vercel.json
-├── railway.json
 └── README.md
 ```
 
@@ -64,25 +63,6 @@ cd frontend
 # Створіть React проект
 npx create-react-app .
 # Або скопіюйте готовий код фронтенду
-```
-
-### 1.3.1 Налаштуйте Railway для монорепозиторію
-
-Railway за замовчуванням шукає `package.json` у корені репозиторію. У цьому проєкті він знаходиться в `backend/`, тож потрібно вказати кореневу директорію для білда. Для цього в корені репозиторію створіть `railway.json` з параметром `rootDirectory`:
-
-```json
-{
-  "$schema": "https://railway.app/railway.schema.json",
-  "rootDirectory": "backend",
-  "build": {
-    "builder": "NIXPACKS"
-  },
-  "deploy": {
-    "startCommand": "node server.js",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
-  }
-}
 ```
 
 ### 1.4 Створіть .gitignore
