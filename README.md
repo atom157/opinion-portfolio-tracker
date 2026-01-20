@@ -121,6 +121,25 @@ git remote add origin https://github.com/YOUR_USERNAME/opinion-portfolio-tracker
 git push -u origin main
 ```
 
+## Змінні середовища
+
+### Backend (Railway)
+
+- `OPINION_API_KEY` — ключ для запитів до Opinion API (якщо потрібен доступ).
+- `FRONTEND_ORIGIN` — дозволені origin-и через кому (наприклад: `http://localhost:3000,https://your-frontend.vercel.app`).
+- `PORT` — порт для сервера (Railway встановлює автоматично).
+
+### Frontend (Vercel)
+
+- `REACT_APP_API_BASE` — базова URL адреса API (наприклад: `https://opinion-portfolio-tracker-production.up.railway.app`).
+
+## Smoke тест
+
+```bash
+# локально (переконайтесь, що backend працює)
+npm run smoke --prefix backend
+```
+
 ## Де сайт?
 
 Railway розгортає **бекенд API**, тому за адресою Railway ви бачите лише JSON з health-check (`/`). Це **не фронтенд** і не сторінка сайту. Щоб був сайт, потрібен окремий деплой **frontend** (наприклад, Vercel/Netlify).
@@ -133,7 +152,12 @@ Railway розгортає **бекенд API**, тому за адресою Ra
    - **Root Directory**: `frontend`
    - **Build Command**: `npm run build`
    - **Output Directory**: `build`
+   - **Environment Variable**: `REACT_APP_API_BASE=https://opinion-portfolio-tracker-production.up.railway.app`
 4. Після деплою сайт буде доступний за доменом Vercel, а Railway URL залишиться адресою API.
+
+### Smoke UI
+
+На сторінці фронтенду натисніть кнопку **Fetch markets** — ви маєте побачити статус `Loaded` і кількість отриманих маркетів.
 
 ## Backend: server.js
 

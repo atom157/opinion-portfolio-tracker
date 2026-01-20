@@ -5,65 +5,110 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const MARKET_CACHE_TTL_MS = 30 * 1000;
+const MARKET_MAX_RETRIES = 2;
+const MARKET_TIMEOUT_MS = 8000;
 
 // Middleware
-app.use(cors());
+const frontendOrigins = (process.env.FRONTEND_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const isDev = process.env.NODE_ENV !== 'production';
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (frontendOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      if (isDev && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'), false);
+    },
+  }),
+);
 app.use(express.json());
 
 // Opinion API configuration
 const OPINION_API_BASE = 'https://openapi.opinion.trade/openapi';
 const API_KEY = process.env.OPINION_API_KEY || 'ehtBldzeqaB88gW0YeWcz6ku5M2R9KO8';
 
-// Helper function to make Opinion API requests
-async function opinionRequest(endpoint) {
+const opinionClient = axios.create({
+  baseURL: OPINION_API_BASE,
+  timeout: MARKET_TIMEOUT_MS,
+  headers: {
+    apikey: API_KEY,
+    'Content-Type': 'application/json',
+  },
+});
+
+function buildErrorResponse(error, statusCode = 500) {
+  const payload = {
+    ok: false,
+    error: error?.message || 'Unexpected error',
+  };
+
+  if (statusCode) {
+    payload.status = statusCode;
+  }
+
+  if (error?.response?.data) {
+    payload.upstream = error.response.data;
+  }
+
+  return payload;
+}
+
+// Helper function to make Opinion API requests with retries
+async function opinionRequest(endpoint, { retries = MARKET_MAX_RETRIES } = {}) {
   try {
-    const response = await axios.get(`${OPINION_API_BASE}${endpoint}`, {
-      headers: {
-        apikey: API_KEY,
-        'Content-Type': 'application/json',
-      },
-    });
+    const response = await opinionClient.get(endpoint);
     return response.data;
   } catch (error) {
+    const status = error?.response?.status;
+    const shouldRetry = retries > 0 && (status === 429 || (status >= 500 && status < 600));
+    if (shouldRetry) {
+      const delayMs = (MARKET_MAX_RETRIES - retries + 1) * 500;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return opinionRequest(endpoint, { retries: retries - 1 });
+    }
     console.error('Opinion API Error:', error.message);
     throw error;
   }
 }
 
+const marketsCache = new Map();
+
+function getCachedMarkets(cacheKey) {
+  const cached = marketsCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+  if (Date.now() > cached.expiresAt) {
+    marketsCache.delete(cacheKey);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedMarkets(cacheKey, value) {
+  marketsCache.set(cacheKey, { value, expiresAt: Date.now() + MARKET_CACHE_TTL_MS });
+}
+
 // Routes
 
-// Basic landing page
-app.get('/', (req, res) => {
-  res.type('html').send(`<!doctype html>
-<html lang="uk">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Opinion Portfolio Tracker</title>
-    <style>
-      body { font-family: Arial, sans-serif; background: #0f1115; color: #f5f5f5; margin: 0; }
-      main { max-width: 720px; margin: 48px auto; padding: 0 16px; }
-      a { color: #7dd3fc; }
-      code { background: #1f2937; padding: 2px 6px; border-radius: 4px; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>Opinion Portfolio Tracker</h1>
-      <p>Це бекенд API. Для сайту потрібен окремий фронтенд-деплой (Vercel/Netlify).</p>
-      <p>Health-check: <a href="/api/health"><code>/api/health</code></a></p>
-    </main>
-  </body>
-</html>`);
-});
-
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'Opinion Portfolio Tracker API',
-    version: '1.0.0',
-  });
+app.get('/health', (req, res) => {
+  res.json({ ok: true });
 });
 
 // Get user positions
@@ -73,12 +118,10 @@ app.get('/api/positions/:walletAddress', async (req, res) => {
     const limit = req.query.limit || 20;
 
     const data = await opinionRequest(`/positions/user/${walletAddress}?limit=${limit}`);
-    res.json(data);
+    res.json({ ok: true, data });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch positions',
-      message: error.message,
-    });
+    const status = error?.response?.status || 502;
+    res.status(status).json(buildErrorResponse(error, status));
   }
 });
 
@@ -89,25 +132,50 @@ app.get('/api/trades/:walletAddress', async (req, res) => {
     const limit = req.query.limit || 50;
 
     const data = await opinionRequest(`/trade/user/${walletAddress}?limit=${limit}`);
-    res.json(data);
+    res.json({ ok: true, data });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch trades',
-      message: error.message,
-    });
+    const status = error?.response?.status || 502;
+    res.status(status).json(buildErrorResponse(error, status));
   }
 });
 
 // Get market data
 app.get('/api/markets', async (req, res) => {
   try {
-    const data = await opinionRequest('/markets');
-    res.json(data);
+    const limit = Number.parseInt(req.query.limit, 10) || 20;
+    const page = Number.parseInt(req.query.page, 10) || 1;
+
+    if (limit <= 0 || page <= 0) {
+      return res.status(400).json(buildErrorResponse(new Error('Invalid pagination params'), 400));
+    }
+
+    const cacheKey = `${limit}:${page}`;
+    const cached = getCachedMarkets(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const data = await opinionRequest(`/markets?limit=${limit}&page=${page}`);
+    let list = [];
+    let total = 0;
+
+    if (Array.isArray(data)) {
+      list = data;
+      total = data.length;
+    } else if (Array.isArray(data?.list)) {
+      list = data.list;
+      total = data.total ?? data.list.length;
+    } else if (Array.isArray(data?.data)) {
+      list = data.data;
+      total = data.total ?? data.data.length;
+    }
+
+    const payload = { ok: true, total, list };
+    setCachedMarkets(cacheKey, payload);
+    res.json(payload);
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch markets',
-      message: error.message,
-    });
+    const status = error?.response?.status || 502;
+    res.status(status).json(buildErrorResponse(error, status));
   }
 });
 
@@ -117,22 +185,17 @@ app.get('/api/balance/:walletAddress', async (req, res) => {
     const { walletAddress } = req.params;
 
     const data = await opinionRequest(`/balance/user/${walletAddress}`);
-    res.json(data);
+    res.json({ ok: true, data });
   } catch (error) {
-    res.status(500).json({
-      error: 'Failed to fetch balance',
-      message: error.message,
-    });
+    const status = error?.response?.status || 502;
+    res.status(status).json(buildErrorResponse(error, status));
   }
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: err.message,
-  });
+  res.status(500).json(buildErrorResponse(err, 500));
 });
 
 // Start server
