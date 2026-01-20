@@ -11,11 +11,10 @@ opinion-portfolio-tracker/
 │   ├── .env.example
 │   └── railway.json
 ├── frontend/
-│   ├── .env.example
 │   ├── src/
 │   │   └── App.jsx
 │   ├── package.json
-├── railway.json
+│   └── vercel.json
 └── README.md
 ```
 
@@ -66,25 +65,6 @@ npx create-react-app .
 # Або скопіюйте готовий код фронтенду
 ```
 
-### 1.3.1 Налаштуйте Railway для монорепозиторію
-
-Railway за замовчуванням шукає `package.json` у корені репозиторію. У цьому проєкті він знаходиться в `backend/`, тож потрібно вказати кореневу директорію для білда. Для цього в корені репозиторію створіть `railway.json` з параметром `rootDirectory`:
-
-```json
-{
-  "$schema": "https://railway.app/railway.schema.json",
-  "rootDirectory": "backend",
-  "build": {
-    "builder": "NIXPACKS"
-  },
-  "deploy": {
-    "startCommand": "node server.js",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
-  }
-}
-```
-
 ### 1.4 Створіть .gitignore
 
 ```bash
@@ -120,76 +100,6 @@ git branch -M main
 git remote add origin https://github.com/YOUR_USERNAME/opinion-portfolio-tracker.git
 git push -u origin main
 ```
-
-## Змінні середовища
-
-### Backend (Railway)
-
-- `OPINION_API_KEY` — ключ для запитів до Opinion API (якщо потрібен доступ).
-- `FRONTEND_ORIGIN` — дозволені origin-и через кому (наприклад: `http://localhost:3000,https://your-frontend.vercel.app`).
-- `PORT` — порт для сервера (Railway встановлює автоматично).
-
-### Frontend (Vercel)
-
-- `REACT_APP_API_BASE` — базова URL адреса API (наприклад: `https://opinion-portfolio-tracker-production.up.railway.app`, без слеша в кінці).
-
-## Smoke тест
-
-```bash
-# локально (переконайтесь, що backend працює)
-npm run smoke --prefix backend
-```
-
-## Де сайт?
-
-Railway розгортає **бекенд API**, тому за адресою Railway ви бачите лише JSON з health-check (`/health`) або 404 на корені. Це **не фронтенд** і не сторінка сайту. Щоб був сайт, потрібен окремий деплой **frontend** (наприклад, Vercel/Netlify).
-
-### Фронтенд: деплой на Vercel (рекомендовано)
-
-1. Створіть React застосунок у `frontend/` (або додайте готовий код).
-2. Запуште репозиторій на GitHub.
-3. У Vercel імпортуйте репозиторій та вкажіть:
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `build`
-   - **Environment Variable**: `REACT_APP_API_BASE=https://opinion-portfolio-tracker-production.up.railway.app`
-4. Після деплою сайт буде доступний за доменом Vercel, а Railway URL залишиться адресою API.
-
-### Smoke UI
-
-На сторінці фронтенду натисніть кнопку **Fetch markets** — ви маєте побачити статус `Loaded` і кількість отриманих маркетів.
-
-## Frontend framework
-
-Frontend — це CRA (Create React App) у папці `frontend/`.
-
-## API endpoints (Railway)
-
-- `GET /health` → `{ "ok": true }`
-- `GET /api/markets?limit=20&page=1` → `{ "ok": true, "total": number, "list": [...] }`
-
-## Локальний запуск
-
-```bash
-# Backend
-cd backend
-npm install
-npm run dev
-```
-
-```bash
-# Frontend (в іншому терміналі)
-cd frontend
-cp .env.example .env
-npm install
-npm start
-```
-
-## Troubleshooting
-
-- **CORS error**: переконайтесь, що `FRONTEND_ORIGIN` містить домен Vercel (або localhost у dev).
-- **Wrong endpoint**: фронтенд має викликати `/api/markets` (а не `/markets`). Див. `frontend/src/App.jsx` для повного URL.
-- **403/401 від Opinion API**: перевірте, що `OPINION_API_KEY` коректний та доданий у Railway.
 
 ## Backend: server.js
 
@@ -229,8 +139,12 @@ async function opinionRequest(endpoint) {
 // Routes
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({ ok: true });
+app.get('/', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'Opinion Portfolio Tracker API',
+    version: '1.0.0',
+  });
 });
 
 // Get user positions
