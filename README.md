@@ -15,7 +15,6 @@ opinion-portfolio-tracker/
 │   │   └── App.jsx
 │   ├── package.json
 │   └── vercel.json
-├── railway.json
 └── README.md
 ```
 
@@ -66,25 +65,6 @@ npx create-react-app .
 # Або скопіюйте готовий код фронтенду
 ```
 
-### 1.3.1 Налаштуйте Railway для монорепозиторію
-
-Railway за замовчуванням шукає `package.json` у корені репозиторію. У цьому проєкті він знаходиться в `backend/`, тож потрібно вказати кореневу директорію для білда. Для цього в корені репозиторію створіть `railway.json` з параметром `rootDirectory`:
-
-```json
-{
-  "$schema": "https://railway.app/railway.schema.json",
-  "rootDirectory": "backend",
-  "build": {
-    "builder": "NIXPACKS"
-  },
-  "deploy": {
-    "startCommand": "node server.js",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
-  }
-}
-```
-
 ### 1.4 Створіть .gitignore
 
 ```bash
@@ -120,20 +100,6 @@ git branch -M main
 git remote add origin https://github.com/YOUR_USERNAME/opinion-portfolio-tracker.git
 git push -u origin main
 ```
-
-## Де сайт?
-
-Railway розгортає **бекенд API**, тому за адресою Railway ви бачите лише JSON з health-check (`/`). Це **не фронтенд** і не сторінка сайту. Щоб був сайт, потрібен окремий деплой **frontend** (наприклад, Vercel/Netlify).
-
-### Фронтенд: деплой на Vercel (рекомендовано)
-
-1. Створіть React застосунок у `frontend/` (або додайте готовий код).
-2. Запуште репозиторій на GitHub.
-3. У Vercel імпортуйте репозиторій та вкажіть:
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `build`
-4. Після деплою сайт буде доступний за доменом Vercel, а Railway URL залишиться адресою API.
 
 ## Backend: server.js
 
